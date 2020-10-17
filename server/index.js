@@ -16,8 +16,6 @@ const load_rom = () => {
 			for (let i = 0; i < rom.byteLength; i++) {
 				programMemory[START_ADDRESS + i] = rom.getUint8(i);
 			}
-			// programMemory[START_ADDRESS] = 0x15;
-			// programMemory[START_ADDRESS + 1] = 0x55;
 			console.log(programMemory);
 		});
 }
