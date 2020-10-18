@@ -35,7 +35,7 @@ pub struct CHIP8 {
     registers: Vec<u8>,
     stack: Stack<u16>,
     pc: usize,
-    i: u16,
+    I: u16,
     sp: usize,
     gfx_buffer: Vec<u8>,
     delay_timer: u8,
@@ -43,6 +43,8 @@ pub struct CHIP8 {
     opcode: (u8,u8),
     start_address: u16,
     font_address: u16,
+    height:u16,
+    width:u16
 }
 
 #[wasm_bindgen]
@@ -52,15 +54,17 @@ impl CHIP8 {
             memory: vec![0; 4096],
             registers: vec![0; 16],
             stack: Stack::<u16>::new(),
-            i: 0,
+            I: 0,
             sp: 0,
-            gfx_buffer: vec![0; 64 * 48],
+            gfx_buffer: vec![0; 64 * 32],
             delay_timer: 0,
             sound_timer: 0,
             opcode: (0,0),
             start_address: 0x200,
             font_address: 0x50,
             pc: 0x200,
+            height:32,
+            width:64
         }
     }
 
@@ -131,12 +135,12 @@ impl CHIP8 {
         let bytes=(ub1,lb1,ub2,lb2);
         console_log!("{} {} {} {} {} {}",self.opcode.0,self.opcode.1,ub1,lb1,ub2,lb2);
         match bytes{
-            // (0x0,0x0,0xE,0x0)=>println!("display"),
-            // (0x0,0x0,0xE,0xE)=>println!("Return"),
-            // (0x0,_,_,_)=>println!("Call"),
+            (0x0,0x0,0xE,0x0)=>console_log!("display"),
+            (0x0,0x0,0xE,0xE)=>console_log!("Return"),
+            (0x0,_,_,_)=>console_log!("Call"),
             (0x1,_,_,_)=>self.handle_jump(bytes.1 as u16,
                 bytes.2 as u16,bytes.3 as u16),
-            // (0x2,_,_,_)=>println!("Call function"),
+            (0x2,_,_,_)=>console_log!("Call function"),
             (0x3,_,_,_)=>self.equal_instruction_register_constant(
                 bytes.1,self.opcode.1
             ),
@@ -214,22 +218,19 @@ impl CHIP8 {
             (0xB,_,_,_)=>self.jump_address_offset(
                 bytes.1 as u16, bytes.2 as u16, bytes.3 as u16
             ),
-            (0xC,_,_,_)=>println!("Vx = rand() & NN"),
-            (0xD,_,_,_)=>{
-                // println!("draw(Vx,Vy,N)"),
-                
-            },
-            // (0xE,_,0x9,0xE)=>println!("if key()==Vx"),
-            // (0xE,_,0xA,0x1)=>println!("if key()!=Vx"),
-            // (0xF,_,0x0,0x7)=>println!("vx=get_delay()"),
-            // (0xF,_,0x0,0xA)=>println!("vx=get_key() blocking operation"),
-            // (0xF,_,0x1,0x5)=>println!("delay_timer(Vx)"),
-            // (0xF,_,0x1,0x8)=>println!("sound_timer(Vx)"),
-            // (0xF,_,0x1,0xE)=>println!("I+=Vx"),
-            // (0xF,_,0x2,0x9)=>println!("set I to sprite_address[Vx]"),
-            // (0xF,_,0x3,0x3)=>println!("BCD to be understood"),
-            // (0xF,_,0x5,0x5)=>println!("store to V0->Vx starting from I,I not mutated"),
-            // (0xF,_,0x6,0x5)=>println!("load from I to V0->Vx, I not mutated"),
+            (0xC,_,_,_)=>console_log!("Vx = rand() & NN"),
+            (0xD,_,_,_)=>self.draw(bytes.1 as usize,bytes.2 as usize,bytes.3),
+            (0xE,_,0x9,0xE)=>console_log!("if key()==Vx"),
+            (0xE,_,0xA,0x1)=>console_log!("if key()!=Vx"),
+            (0xF,_,0x0,0x7)=>console_log!("vx=get_delay()"),
+            (0xF,_,0x0,0xA)=>console_log!("vx=get_key() blocking operation"),
+            (0xF,_,0x1,0x5)=>console_log!("delay_timer(Vx)"),
+            (0xF,_,0x1,0x8)=>console_log!("sound_timer(Vx)"),
+            (0xF,_,0x1,0xE)=>console_log!("I+=Vx"),
+            (0xF,_,0x2,0x9)=>console_log!("set I to sprite_address[Vx]"),
+            (0xF,_,0x3,0x3)=>console_log!("BCD to be understood"),
+            (0xF,_,0x5,0x5)=>console_log!("store to V0->Vx starting from I,I not mutated"),
+            (0xF,_,0x6,0x5)=>console_log!("load from I to V0->Vx, I not mutated"),
             (_,_,_,_)=>self.pass()
         };
 
@@ -251,7 +252,9 @@ impl CHIP8 {
     }
 
     fn set_address(&mut self,b1:u16,b2:u16,b3:u16){
-        self.i=self.get_padded_address(b1,b2,b3).into();
+        console_log!("I : {}",self.I);
+        self.I=self.get_padded_address(b1,b2,b3).into();
+        console_log!("I : {}",self.I);
     }
 
     fn jump_address_offset(&mut self,b1:u16, b2:u16,b3:u16){
@@ -274,6 +277,29 @@ impl CHIP8 {
     fn equal_instruction_register_register(&mut self,b1:u8,b2:u8){
         if self.registers[b1 as usize] == self.registers[b2 as usize]{
             self.move_pc();
+        }
+    }
+    fn get_index(&mut self,x:u16,y:u16)->usize{
+        (x * self.width + y) as usize
+    }
+    fn draw(&mut self, b1:usize,b2:usize,n:u8){
+        let mut col:u16=(self.registers[b1]%self.width as u8).into();
+        let mut row:u16=(self.registers[b2]%self.height as u8).into();
+        
+        for j in 0_u8..n{
+            let sprite_row:u8=self.memory[(self.I+j as u16) as usize];
+            console_log!("{} ",sprite_row);
+            for i in (0_u8..8).rev(){
+                let pack_ind=self.get_index(row, col);
+                let old_px=self.gfx_buffer[pack_ind];
+                self.gfx_buffer[pack_ind]=old_px^(sprite_row&(1<<i));
+                if old_px!=sprite_row&(1<<i){
+                    self.registers[0xF]=1;
+                }
+                col=(col+1)%self.width;
+            }
+            col=(self.registers[b1]%self.width as u8).into();
+            row=(row+1)%self.height;
         }
     }
 }
