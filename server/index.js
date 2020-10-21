@@ -9,6 +9,8 @@ const CELL_SIZE =20;
 const height = chip.get_height();
 const width = chip.get_width();
 
+const gfx = new Array(height * width).fill(0);
+
 let inverseKeyMapping = {
 	48:0x0,
 	49:0x1,
@@ -35,13 +37,34 @@ const prepareCanvas = () => {
 	
 	return canvas.getContext('2d');
 }
+const fillCanvas = () => {
+	ctx.beginPath();
+
+	for (let row = 0; row < height; row++) {
+		for (let col = 0; col < width; col++)
+		{
+			const idx = getIndex(row, col);
+			
+			ctx.fillStyle = "#000000";
+			
+			ctx.fillRect(
+			col * (CELL_SIZE) +1,
+			row * (CELL_SIZE)+1,
+			CELL_SIZE,
+			CELL_SIZE
+			);
+		}
+	}
+
+	ctx.stroke();
+}
 
 const _loadCallback = () => {
-	drawCells();
+	fillCanvas();
 	requestAnimationFrame(renderLoop);
 }
 const loadRom = async () => {
-	await fetch('roms/test_opcode.ch8')
+	await fetch('roms/pong.rom')
 	.then(i => i.arrayBuffer())
 		.then(buffer => {
 			const rom = new DataView(buffer, 0, buffer.byteLength);
@@ -50,7 +73,6 @@ const loadRom = async () => {
 			for (let i = 0; i < rom.byteLength; i++) {
 				programMemory[START_ADDRESS + i] = rom.getUint8(i);
 			}
-			console.log(programMemory);
 
 			_loadCallback();
 		});
@@ -63,54 +85,28 @@ const getIndex = (row, column) => {
 
 
 const drawCells = () => {
-	const cellsPtr = chip.get_graphics_pointer();
-	const cells = new Uint8Array(memory.buffer, cellsPtr, width * height);
+
+	const cellsPtr = chip.get_dirty_paint();
+	const cells = new Uint16Array(memory.buffer, cellsPtr, chip.get_dirty_size());
 
 	ctx.beginPath();
 
-	for (let row = 0; row < height; row++) {
-		for (let col = 0; col < width; col++)
-		{
-			const idx = getIndex(row, col);
-			
-			ctx.fillStyle = (cells[idx] != 0) ? "#FFFFFF" : "#000000";
-			
-			ctx.fillRect(
-			col * (CELL_SIZE) +1,
-			row * (CELL_SIZE)+1,
-			CELL_SIZE,
-			CELL_SIZE
-			);
-		}
+	for (var ind of cells) {
+		let row = Math.floor(ind / width);
+		let col = ind % width;
+
+		gfx[ind] = 1 - gfx[ind];
+		ctx.fillStyle = (gfx[ind] != 0) ? "#FFFFFF" : "#000000";
+		
+		ctx.fillRect(
+		col * (CELL_SIZE) +1,
+		row * (CELL_SIZE)+1,
+		CELL_SIZE,
+		CELL_SIZE
+		);
 	}
 
 	ctx.stroke();
-
-	// const cellsPtr = chip.get_dirty_paint();
-	// const cells = new Uint8Array(memory.buffer, cellsPtr, chip.get_dirty_size());
-
-	// ctx.beginPath();
-
-	// console.log(cells);
-	// for (let ind in cells) {
-	// 	// for (let col = 0; col < width; col++)
-	// 	// {
-	// 	// 	const idx = getIndex(row, col);
-	// 	let row = ind % width;
-	// 	let col = ind / width;
-			
-	// 	ctx.fillStyle = (cells[ind] != 0) ? "#FFFFFF" : "#000000";
-		
-	// 	ctx.fillRect(
-	// 	col * (CELL_SIZE) +1,
-	// 	row * (CELL_SIZE)+1,
-	// 	CELL_SIZE,
-	// 	CELL_SIZE
-	// 	);
-	// 	// }
-	// }
-
-	// ctx.stroke();
 };
 
 const keyboardDownEvent = (event) => {
@@ -145,7 +141,10 @@ const renderLoop = () => {
 	chip.decode_instruction();
 	while (chip.get_block_signal()==1) { }
 	chip.post_cycle();
-	drawCells();
+	if (chip.should_draw()) {
+		drawCells();
+		chip.draw_completed();
+	}
 	requestAnimationFrame(renderLoop);
 };
 
