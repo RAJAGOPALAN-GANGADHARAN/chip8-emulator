@@ -1,7 +1,4 @@
-pub mod stack;
-
 mod utils;
-use crate::stack::Stack;
 use wasm_bindgen::prelude::*;
 
 ///////////////////////////////////////////////////////
@@ -32,7 +29,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 pub struct CHIP8 {
     memory: Vec<u8>,
     registers: Vec<u8>,
-    stack: Stack<u16>,
+    stack: Vec<u16>,
     pc: usize,
     I: u16,
     sp: usize,
@@ -45,6 +42,9 @@ pub struct CHIP8 {
     height: u16,
     width: u16,
     key_buffer: Vec<u8>,
+    block_signal:u8,
+    dirty_paint:Vec<u16>,
+    dirty_size:u16
     // current_key:u16
 }
 
@@ -54,9 +54,9 @@ impl CHIP8 {
         CHIP8 {
             memory: vec![0; 4096],
             registers: vec![0; 16],
-            stack: Stack::<u16>::new(),
+            stack: vec![0; 64],
             I: 0,
-            sp: 0,
+            sp: 1,
             gfx_buffer: vec![0; 64 * 32],
             delay_timer: 0,
             sound_timer: 0,
@@ -67,7 +67,9 @@ impl CHIP8 {
             height: 32,
             width: 64,
             key_buffer: vec![0; 16],
-            // current_key:16
+            block_signal:0,
+            dirty_paint:vec![0;0],
+            dirty_size:0
         }
     }
 
@@ -96,9 +98,38 @@ impl CHIP8 {
         }
     }
 
-    // pub fn set_current_key(&mut self,key:u16){
-    //     self.current_key=key;
-    // }
+    pub fn get_width(&self)->u16{
+        self.width
+    }
+
+    pub fn get_height(&self)->u16{
+        self.height
+    }
+
+    pub fn get_dirty_paint(&self)->*const u16{
+        self.dirty_paint.as_ptr()
+    }
+
+    pub fn get_dirty_size(&self)->u16{
+        self.dirty_size
+    }
+
+    pub fn get_block_signal(&self)->u8{
+        self.block_signal
+    }
+
+    pub fn toggle_block_signal(&mut self){
+        self.block_signal=1-self.block_signal;
+    }
+
+    pub fn post_cycle(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
+    }
 
     pub fn get_key_buffer_pointer(&self) -> *const u8 {
         self.key_buffer.as_ptr()
@@ -144,21 +175,26 @@ impl CHIP8 {
         ub1 >>= 4;
         ub2 >>= 4;
         let bytes = (ub1, lb1, ub2, lb2);
-        console_log!(
-            "{} {} {} {} {} {}",
-            self.opcode.0,
-            self.opcode.1,
-            ub1,
-            lb1,
-            ub2,
-            lb2
-        );
+
+        console_log!("{:#x} {} {} {} {}", self.get_opcode(),ub1,lb1,ub2,lb2);
         match bytes {
-            (0x0, 0x0, 0xE, 0x0) => console_log!("display"),
-            (0x0, 0x0, 0xE, 0xE) => console_log!("Return"),
-            (0x0, _, _, _) => console_log!("Call"),
+            (0x0, 0x0, 0xE, 0x0) => self.gfx_buffer = vec![0; (self.width * self.height) as usize],
+            (0x0,0x0,0xE,0xE) => {
+                self.pc = self.stack[self.sp - 1] as usize;
+                self.sp -= 1;
+            }
+            (0x0, _, _, _) => self.handle_jump(bytes.1 as u16, bytes.2 as u16, bytes.3 as u16),
             (0x1, _, _, _) => self.handle_jump(bytes.1 as u16, bytes.2 as u16, bytes.3 as u16),
-            (0x2, _, _, _) => console_log!("Call function"),
+            (0x2, _, _, _) => {
+                console_log!("Call function {} {}",self.sp,self.pc);
+                self.stack[self.sp] = self.pc as u16;
+                console_log!("{} ",self.sp);
+                self.sp += 1;
+                self.pc = self
+                    .get_padded_address(bytes.1 as u16, bytes.2 as u16, bytes.3 as u16)
+                    .into();
+                console_log!("{}",self.pc);
+            }
             (0x3, _, _, _) => self.equal_instruction_register_constant(bytes.1, self.opcode.1),
             (0x4, _, _, _) => self.not_equal_instruction_register_constant(bytes.1, self.opcode.1),
             (0x5, _, _, 0x0) => self.equal_instruction_register_register(bytes.1, bytes.2),
@@ -186,7 +222,8 @@ impl CHIP8 {
                     self.registers[0xF] = 0;
                 }
                 None => {
-                    self.registers[bytes.1 as usize] = 255;
+                    let val:u16=self.registers[bytes.1 as usize] as u16 +self.registers[bytes.2 as usize]as u16;
+                    self.registers[bytes.1 as usize] = (val&0xFF) as u8;
                     self.registers[0xF] = 1;
                 }
             },
@@ -198,7 +235,7 @@ impl CHIP8 {
                     self.registers[0xF] = 1;
                 }
                 None => {
-                    self.registers[bytes.1 as usize] = 0;
+                    self.registers[bytes.1 as usize] -= self.registers[bytes.2 as usize];
                     self.registers[0xF] = 0;
                 }
             },
@@ -245,20 +282,46 @@ impl CHIP8 {
                     self.move_pc();
                 }
             }
-            (0xF, _, 0x0, 0x7) => console_log!("vx=get_delay()"),
-            (0xF, _, 0x0, 0xA) => console_log!("vx=get_key() blocking operation"),
-            (0xF, _, 0x1, 0x5) => console_log!("delay_timer(Vx)"),
-            (0xF, _, 0x1, 0x8) => console_log!("sound_timer(Vx)"),
-            (0xF, _, 0x1, 0xE) => console_log!("I+=Vx"),
-            (0xF, _, 0x2, 0x9) => console_log!("set I to sprite_address[Vx]"),
-            (0xF, _, 0x3, 0x3) => console_log!("BCD to be understood"),
-            (0xF, _, 0x5, 0x5) => console_log!("store to V0->Vx starting from I,I not mutated"),
-            (0xF, _, 0x6, 0x5) => console_log!("load from I to V0->Vx, I not mutated"),
+            (0xF, _, 0x0, 0x7) => self.registers[bytes.1 as usize] = self.delay_timer,
+            (0xF, _, 0x0, 0xA) => self.block_signal=1,
+            (0xF, _, 0x1, 0x5) => self.delay_timer = self.registers[bytes.1 as usize],
+            (0xF, _, 0x1, 0x8) => self.sound_timer = self.registers[bytes.1 as usize],
+            (0xF, _, 0x1, 0xE) => self.I += self.registers[bytes.1 as usize] as u16, //console_log!("I+=Vx"),
+            (0xF, _, 0x2, 0x9) => {
+                self.I = self.font_address + 5 * self.registers[bytes.1 as usize] as u16
+            } //console_log!("set I to sprite_address[Vx]"),
+            (0xF, _, 0x3, 0x3) => {
+                console_log!("BCD");
+                let mut cal:u8=self.registers[bytes.1 as usize];
+                self.memory[(self.I+2) as usize]=cal%10;
+                cal/=10;
+
+                self.memory[(self.I+1) as usize]=cal%10;
+                cal/=10;
+
+                self.memory[(self.I) as usize]=cal%10;
+            },
+            (0xF, _, 0x5, 0x5) => {
+                console_log!("store to V0->Vx starting from I,I not mutated");
+                for i in 0..(bytes.1 + 1) {
+                    self.memory[(self.I + i as u16) as usize] = self.registers[i as usize];
+                }
+            }
+            (0xF, _, 0x6, 0x5) => {
+                console_log!("load from I to V0->Vx, I not mutated");
+                for i in 0..(bytes.1 + 1) {
+                    self.registers[i as usize] = self.memory[(self.I + i as u16) as usize];
+                }
+            }
             (_, _, _, _) => self.pass(),
         };
 
         match bytes {
+            //(0xE, 0xE, 0x0, 0x0) => self.pass(),
+            //(0x0, _, _, _) => self.pass(),
             (0x1, _, _, _) => self.pass(),
+            (0x2, _, _, _) => self.pass(),
+            //(0xA,_,_,_)=>self.pass(),
             (_, _, _, _) => self.move_pc(),
         }
     }
@@ -272,12 +335,11 @@ impl CHIP8 {
     }
     fn handle_jump(&mut self, b1: u16, b2: u16, b3: u16) {
         self.pc = self.get_padded_address(b1, b2, b3).into();
+        console_log!("Handle jump {}",self.pc);
     }
 
     fn set_address(&mut self, b1: u16, b2: u16, b3: u16) {
-        console_log!("I : {}", self.I);
         self.I = self.get_padded_address(b1, b2, b3).into();
-        console_log!("I : {}", self.I);
     }
 
     fn jump_address_offset(&mut self, b1: u16, b2: u16, b3: u16) {
@@ -306,23 +368,31 @@ impl CHIP8 {
         (x * self.width + y) as usize
     }
     fn draw(&mut self, b1: usize, b2: usize, n: u8) {
+        // self.dirty_paint.clear();
         let mut col: u16 = (self.registers[b1] % self.width as u8).into();
         let mut row: u16 = (self.registers[b2] % self.height as u8).into();
 
         for j in 0_u8..n {
             let sprite_row: u8 = self.memory[(self.I + j as u16) as usize];
-            console_log!("{} ", sprite_row);
             for i in (0_u8..8).rev() {
                 let pack_ind = self.get_index(row, col);
                 let old_px = self.gfx_buffer[pack_ind];
-                self.gfx_buffer[pack_ind] = old_px ^ (sprite_row & (1 << i));
-                if old_px != sprite_row & (1 << i) {
-                    self.registers[0xF] = 1;
+                if (sprite_row & (1 << i))>0{
+                    if old_px>0{
+                        self.registers[0xF] = 1;
+                    }
+                    self.gfx_buffer[pack_ind] = old_px ^ (sprite_row & (1 << i));
+                    
+                    // if self.gfx_buffer[pack_ind]!=old_px{
+                    //     self.dirty_paint.push(pack_ind as u16);
+                    // }
                 }
                 col = (col + 1) % self.width;
             }
             col = (self.registers[b1] % self.width as u8).into();
             row = (row + 1) % self.height;
         }
+
+        // self.dirty_size=self.dirty_paint.len() as u16;
     }
 }
