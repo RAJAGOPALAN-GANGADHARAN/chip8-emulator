@@ -25,6 +25,7 @@ macro_rules! console_log {
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+
 #[wasm_bindgen]
 pub struct CHIP8 {
     memory: Vec<u8>,
@@ -44,7 +45,9 @@ pub struct CHIP8 {
     key_buffer: Vec<u8>,
     block_signal:u8,
     dirty_paint:Vec<u16>,
-    dirty_size:u16
+    dirty_size:u16,
+    bit:u8,
+    lfsr:u8
 }
 
 #[wasm_bindgen]
@@ -68,7 +71,9 @@ impl CHIP8 {
             key_buffer: vec![0; 16],
             block_signal:0,
             dirty_paint:vec![0;0],
-            dirty_size:0
+            dirty_size:0,
+            bit:0,
+            lfsr:0xAC
         }
     }
 
@@ -272,7 +277,12 @@ impl CHIP8 {
             (0xB, _, _, _) => {
                 self.jump_address_offset(bytes.1 as u16, bytes.2 as u16, bytes.3 as u16)
             }
-            (0xC, _, _, _) => console_log!("Vx = rand() & NN"),
+            (0xC, _, _, _) => {
+                console_log!("Vx = rand() & NN");
+                // let mut rng = rand::thread_rng();
+                let rand_mask: u8 = self.rand();
+                self.registers[bytes.1 as usize]=rand_mask&(self.opcode.1);
+            }
             (0xD, _, _, _) => self.draw(bytes.1 as usize, bytes.2 as usize, bytes.3),
             (0xE, _, 0x9, 0xE) => {
                 if self.key_buffer[self.registers[bytes.1 as usize] as usize] == 1 {
@@ -323,6 +333,15 @@ impl CHIP8 {
     }
 
     fn pass(&self) {}
+
+    
+    fn rand(&mut self)->u8
+    {
+        self.bit  = ((self.lfsr >> 0) ^ (self.lfsr >> 2) ^ (self.lfsr >> 3) ^ (self.lfsr >> 5) ) & 1;
+        self.lfsr =  (self.lfsr >> 1) | (self.bit << 7);
+
+        self.lfsr
+    }
 
     fn get_padded_address(&self, b1: u16, b2: u16, b3: u16) -> u16 {
         let b1 = b1 << 8;

@@ -137,8 +137,10 @@ const initialize = () => {
 
 
 const renderLoop = () => {
-	chip.fetch_instruction();
-	chip.decode_instruction();
+	for (var i = 0; i < 15; ++i) {
+		chip.fetch_instruction();
+		chip.decode_instruction();
+	}
 	while (chip.get_block_signal()==1) { }
 	chip.post_cycle();
 	if (chip.should_draw()) {
