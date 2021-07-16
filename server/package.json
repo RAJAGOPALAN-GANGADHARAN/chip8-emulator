@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "start": "webpack-dev-server"
+    "start": "webpack serve"
   },
   "repository": {
     "type": "git",
@@ -30,10 +30,11 @@
     "chip8_emulator": "file:../pkg"
   },
   "devDependencies": {
+    "@webpack-cli/serve": "^1.5.1",
     "copy-webpack-plugin": "^5.0.0",
     "hello-wasm-pack": "^0.1.0",
     "webpack": "^4.29.3",
-    "webpack-cli": "^3.1.0",
+    "webpack-cli": "4.x.x",
     "webpack-dev-server": "^3.11.0"
   }
 }
