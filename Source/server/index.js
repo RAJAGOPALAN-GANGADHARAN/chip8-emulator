@@ -1,6 +1,6 @@
 import { CHIP8 } from "chip8_emulator";
 import { memory } from "chip8_emulator/chip8_emulator_bg";
-
+var json = require('./roms/metadata.json')
 
 const chip = CHIP8.new();
 const START_ADDRESS = chip.start_address();
@@ -63,8 +63,8 @@ const _loadCallback = () => {
 	fillCanvas();
 	requestAnimationFrame(renderLoop);
 }
-const loadRom = async () => {
-	await fetch('roms/pong.rom')
+const loadRom = async (rom) => {
+	await fetch('roms/'+rom)
 	.then(i => i.arrayBuffer())
 		.then(buffer => {
 			const rom = new DataView(buffer, 0, buffer.byteLength);
@@ -128,11 +128,12 @@ const keyboardUpEvent = (event) => {
 		keyBuffer[inverseKeyMapping[code]] = 0;
 	}
 }
-const initialize = () => {
+const initialize = (rom) => {
 	chip.load_fonts();
 	window.addEventListener("keydown", keyboardDownEvent);
 	window.addEventListener("keyup", keyboardUpEvent);
-	loadRom();
+	loadRom(rom);
+	console.log(json)
 }
 
 
@@ -149,6 +150,97 @@ const renderLoop = () => {
 	}
 	requestAnimationFrame(renderLoop);
 };
+var ctx = null
+function main(rom){
+	ctx = prepareCanvas();
+	initialize(rom);
+}
+async function populate() {
+	let dom = document.getElementById('roms');
+	if (dom == null) return;
+	for (let name in json) {
+		if (json[name]['txt']) {
+			await fetch("roms/" + json[name]['txt'])
+				.then(res => res.text())
+				.then(text => {
+					console.log(text,name)
+					dom.insertAdjacentHTML('beforeend',
+					`
+					<div class="card" style="margin: 50px">
+					<div class="card-header">
+						${name}
+					</div>
+					<div class="card-body">
+						<h5 class="card-title">${name}</h5>
+						<p class="card-text">${text}</p>
+						<a href="/play.html?rom=${json[name].rom}&name=${name}&details=${json[name].txt}" class="btn btn-primary">Play!</a>
+					</div>
+					</div>
+					`)
+				})
+		}
+		else {
+			dom.insertAdjacentHTML('beforeend',
+					`
+					<div class="card" style="margin: 50px">
+					<div class="card-header">
+						${name}
+					</div>
+					<div class="card-body">
+						<h5 class="card-title">${name}</h5>
+						<p class="card-text">No info! Give it a shot anyways</p>
+						<a href="/play.html?rom=${json[name].rom}&name=${name}" class="btn btn-primary">Play!</a>
+					</div>
+					</div>
+					`)
+		}
+		// await fetch('roms/')
+		
+	}
+}
+async function entry() {
+	let roms = document.getElementById('roms');
+	if (roms) {
+		main("test_opcode.ch8")
+		populate();
+	}
+	else {
+		const params = new URLSearchParams(document.location.search);
+		const rom = params.get("rom");
+		const name = params.get("name");
+		const details = params.get("details");
+        console.log(rom);
+		main(rom);
+		let deets = document.getElementById('details');
+		if (details) {
+			await fetch("roms/" + details).then(res => res.text()).then(text => {
+				deets.insertAdjacentHTML('beforeend',
+				`
+				<div>
+					<h2>${name}</h2>
+					<hr>
+					<p>${text}</p>
+				</div>
+				`
+				)
+			})
+		}
+		else {
+			deets.insertAdjacentHTML('beforeend',
+				`
+				<div>
+					<h2>${name}</h2>
+					<hr>
+					<p>Info not found!</p>
+				</div>
+				`
+				)
+		}
+			
+		
+	}
+	
+}
+//document.querySelector('button').addEventListener('click', main('Tank.ch8'));
 
-const ctx = prepareCanvas();
-initialize();
+window.onload = entry;

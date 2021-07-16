@@ -27,7 +27,8 @@
   },
   "homepage": "https://github.com/rustwasm/create-wasm-app#readme",
   "dependencies": {
-    "chip8_emulator": "file:../pkg"
+    "chip8_emulator": "file:../pkg",
+    "fs": "*"
   },
   "devDependencies": {
     "@webpack-cli/serve": "^1.5.1",
