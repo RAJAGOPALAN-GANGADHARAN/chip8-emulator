@@ -243,4 +243,4 @@ async function entry() {
 }
 //document.querySelector('button').addEventListener('click', main('Tank.ch8'));
 
-window.onload = entry;
+entry();
