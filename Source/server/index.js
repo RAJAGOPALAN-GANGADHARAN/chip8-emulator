@@ -173,7 +173,7 @@ async function populate() {
 					<div class="card-body">
 						<h5 class="card-title">${name}</h5>
 						<p class="card-text">${text}</p>
-						<a href="/play.html?rom=${json[name].rom}&name=${name}&details=${json[name].txt}" class="btn btn-primary">Play!</a>
+						<a href="/chip8-emulator/play.html?rom=${json[name].rom}&name=${name}&details=${json[name].txt}" class="btn btn-primary">Play!</a>
 					</div>
 					</div>
 					`)
@@ -189,7 +189,7 @@ async function populate() {
 					<div class="card-body">
 						<h5 class="card-title">${name}</h5>
 						<p class="card-text">No info! Give it a shot anyways</p>
-						<a href="/play.html?rom=${json[name].rom}&name=${name}" class="btn btn-primary">Play!</a>
+						<a href="/chip8-emulator/play.html?rom=${json[name].rom}&name=${name}" class="btn btn-primary">Play!</a>
 					</div>
 					</div>
 					`)
